@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Belly Dance Workshop - Beginner Level",
+    "start_date": "2024-01-15",
+    "end_date": "2024-01-15",
+    "location": "Dance Studio Downtown",
+    "url": "https://example.com/belly-dance-workshop"
+  },
+  {
+    "name": "Traditional Folk Dance Festival",
+    "start_date": "2024-02-10",
+    "end_date": "2024-02-12",
+    "location": "Cultural Center",
+    "url": "https://example.com/folk-dance-festival"
+  },
+  {
+    "name": "Middle Eastern Dance Intensive",
+    "start_date": "2024-03-05",
+    "end_date": "2024-03-07",
+    "location": "Arts Academy",
+    "url": "https://example.com/middle-eastern-intensive"
+  },
+  {
+    "name": "Fusion Dance Performance",
+    "start_date": "2024-04-20",
+    "end_date": "2024-04-20",
+    "location": "Theater Hall",
+    "url": "https://example.com/fusion-performance"
+  },
+  {
+    "name": "Dance Teacher Training",
+    "start_date": "2024-05-15",
+    "end_date": "2024-05-17",
+    "location": "Professional Dance Institute",
+    "url": "https://example.com/teacher-training"
+  }
+]
