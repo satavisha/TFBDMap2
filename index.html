@@ -1,65 +1,319 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tfbd Map - Dance Events</title>
-    <link rel="stylesheet" href="/assets/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TFBD Map — Tribal Fusion Belly Dance Events</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Site CSS (keep this relative for GitHub Pages and Vercel) -->
+  <link rel="stylesheet" href="./assets/styles.css" />
+
+  <style>
+    /* Minimal in-page styles so the page looks fine even if external CSS is not loaded */
+    :root {
+      --bg: #0f0f14;
+      --panel: rgba(255,255,255,0.06);
+      --text: #f6f6f7;
+      --muted: #b9bcc6;
+      --accent: #e9a6c1; /* soft feminine pink */
+      --accent-2: #b2d9d0; /* mint */
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Poppins", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--text);
+      background: linear-gradient(180deg, #0b0b10 0%, #1a1824 100%);
+      min-height: 100dvh;
+    }
+    .hero {
+      position: relative;
+      padding: 48px 16px 24px;
+      text-align: center;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: url("./public/images/dancer-background.png") center/cover no-repeat;
+      opacity: 0.18;
+      z-index: -1;
+      filter: contrast(110%) saturate(110%);
+    }
+    .title {
+      font-family: "Dancing Script", cursive;
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--text);
+      text-shadow: 0 2px 18px rgba(233,166,193,0.25);
+    }
+    .subtitle {
+      margin: 8px auto 0;
+      color: var(--muted);
+      max-width: 720px;
+      line-height: 1.5;
+    }
+    .pill {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(233,166,193,0.22), rgba(178,217,208,0.18));
+      font-size: 12px;
+      color: var(--text);
+    }
+    .container {
+      width: min(1100px, 92vw);
+      margin: 16px auto 56px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    }
+    .panel-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .table-wrap {
+      overflow: auto;
+      max-height: 70vh; /* scrollable table */
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 760px;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #1f1d2a;
+      color: var(--text);
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      font-weight: 600;
+    }
+    thead tr.filters th {
+      top: 44px; /* second sticky row */
+      background: #1b1925;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    thead input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      outline: none;
+    }
+    tbody td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      vertical-align: top;
+    }
+    tbody tr:hover {
+      background: rgba(255,255,255,0.04);
+    }
+    a.link {
+      color: var(--accent-2);
+      text-decoration: none;
+      word-break: break-all;
+    }
+    a.link:hover { text-decoration: underline; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(233,166,193,0.18);
+      color: #ffddea;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 18px 0 40px;
+    }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
-    <!-- Background Image Container -->
-    <div class="background-container">
-        <img id="background-image" src="/images/dancer-background.png" alt="Dance Background" />
-        <div class="background-overlay"></div>
-    </div>
+  <header class="hero">
+    <div class="pill">Feminine • Clean • Elegant • Dance</div>
+    <h1 class="title"><strong>TFBD Map</strong></h1>
+    <p class="subtitle">A living list of Tribal Fusion Belly Dance events worldwide. Filter by name, date, location, or jump to the original link.</p>
+  </header>
 
-    <!-- Header with Navigation and Telegram Button -->
-    <header class="header">
-        <nav class="nav">
-            <a href="/" class="nav-tab active">tfbd Map</a>
-        </nav>
-        <a href="https://t.me/TFBDMap" target="_blank" rel="noopener" class="telegram-btn">
-            <span class="telegram-icon">📱</span>
-            Join the community
-        </a>
-    </header>
+  <main class="container">
+    <section class="panel" aria-labelledby="events-heading">
+      <div class="panel-header">
+        <h2 id="events-heading">Upcoming Events <span class="badge" id="count-badge">0</span></h2>
+        <div class="meta" id="last-updated" aria-live="polite">Loading latest data</div>
+      </div>
 
-    <!-- Background Upload Section -->
-    <div class="upload-section">
-        <input type="file" id="background-upload" accept="image/*" style="display: none;">
-        <button onclick="document.getElementById('background-upload').click()" class="upload-btn">
-            Change Background
-        </button>
-    </div>
+      <div class="table-wrap">
+        <table id="events-table">
+          <thead>
+            <tr>
+              <th style="width: 32%">Event name</th>
+              <th style="width: 12%">Start date</th>
+              <th style="width: 12%">End date</th>
+              <th style="width: 24%">Location</th>
+              <th style="width: 20%">URL</th>
+            </tr>
+            <tr class="filters">
+              <th><input id="filter-name" type="text" placeholder="Filter by name"></th>
+              <th><input id="filter-start" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="filter-end" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="filter-location" type="text" placeholder="State, Country"></th>
+              <th><input id="filter-url" type="text" placeholder="Filter by domain"></th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="table-container">
-            <table class="events-table">
-                <thead>
-                    <tr class="header-row">
-                        <th>Event Name</th>
-                        <th>Start Date</th>
-                        <th>End Date</th>
-                        <th>Location</th>
-                        <th>URL</th>
-                    </tr>
-                    <tr class="filter-row">
-                        <th><input type="text" id="filter-name" placeholder="Filter by name..." class="filter-input"></th>
-                        <th><input type="text" id="filter-start" placeholder="Filter by start date..." class="filter-input"></th>
-                        <th><input type="text" id="filter-end" placeholder="Filter by end date..." class="filter-input"></th>
-                        <th><input type="text" id="filter-location" placeholder="Filter by location..." class="filter-input"></th>
-                        <th><input type="text" id="filter-url" placeholder="Filter by URL..." class="filter-input"></th>
-                    </tr>
-                </thead>
-                <tbody id="events-tbody">
-                    <!-- Events will be populated here -->
-                </tbody>
-            </table>
-        </div>
-    </main>
+    <p class="footer">Tip: Dates use dd/mm/yyyy. Update sources in <code>websites_list.txt</code> and the scraper will refresh the data daily.</p>
+  </main>
 
-    <script src="/assets/script.js"></script>
+  <!-- Site JS (keep this relative) -->
+  <script src="./assets/script.js" defer></script>
+
+  <script>
+    // If you keep logic in assets/script.js, this inline code is optional.
+    // Below is a self-contained fallback so index.html works even if script.js is empty.
+
+    const EVENTS_JSON_URL = "./data/events.json"; // local file for GitHub Pages or Vercel
+    let allData = [];
+    let filtered = [];
+
+    const els = {
+      tbody: document.getElementById("table-body"),
+      lastUpdated: document.getElementById("last-updated"),
+      count: document.getElementById("count-badge"),
+      fName: document.getElementById("filter-name"),
+      fStart: document.getElementById("filter-start"),
+      fEnd: document.getElementById("filter-end"),
+      fLoc: document.getElementById("filter-location"),
+      fUrl: document.getElementById("filter-url"),
+    };
+
+    function safe(val) {
+      return (val ?? "").toString().trim();
+    }
+
+    function toCells(evt) {
+      const name = safe(evt.name);
+      const start = safe(evt.start_date);
+      const end = safe(evt.end_date);
+      const loc = safe(evt.location);
+      const url = safe(evt.url) || safe(evt.link);
+
+      const a = url ? `<a class="link" href="${url}" target="_blank" rel="noopener">Open</a>` : "";
+
+      return `
+        <td>${name}</td>
+        <td>${start}</td>
+        <td>${end}</td>
+        <td>${loc}</td>
+        <td>${a}</td>
+      `;
+    }
+
+    function render(rows) {
+      els.tbody.innerHTML = rows.map(r => `<tr>${toCells(r)}</tr>`).join("");
+      els.count.textContent = rows.length;
+    }
+
+    function applyFilters() {
+      const qName = els.fName.value.toLowerCase();
+      const qStart = els.fStart.value.toLowerCase();
+      const qEnd = els.fEnd.value.toLowerCase();
+      const qLoc = els.fLoc.value.toLowerCase();
+      const qUrl = els.fUrl.value.toLowerCase();
+
+      filtered = allData.filter(evt => {
+        const name = safe(evt.name).toLowerCase();
+        const start = safe(evt.start_date).toLowerCase();
+        const end = safe(evt.end_date).toLowerCase();
+        const loc = safe(evt.location).toLowerCase();
+        const url = safe(evt.url || evt.link).toLowerCase();
+
+        return (
+          name.includes(qName) &&
+          start.includes(qStart) &&
+          end.includes(qEnd) &&
+          loc.includes(qLoc) &&
+          url.includes(qUrl)
+        );
+      });
+
+      render(filtered);
+    }
+
+    function wireFilters() {
+      [els.fName, els.fStart, els.fEnd, els.fLoc, els.fUrl].forEach(input => {
+        input.addEventListener("input", applyFilters);
+      });
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch(EVENTS_JSON_URL, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`Failed to fetch events.json: ${res.status}`);
+        const data = await res.json();
+
+        // Accept either a flat array or an object with { upcoming, past, last_updated }
+        const flat = Array.isArray(data) ? data : Array.isArray(data.upcoming) ? data.upcoming : [];
+        allData = flat;
+        filtered = [...allData];
+
+        const last = data.last_updated || new Date().toLocaleString();
+        els.lastUpdated.textContent = `Last updated: ${last}`;
+        render(filtered);
+      } catch (err) {
+        console.warn(err);
+        els.lastUpdated.textContent = "Could not load data";
+        allData = [];
+        filtered = [];
+        render(filtered);
+      }
+    }
+
+    wireFilters();
+    loadData();
+  </script>
 </body>
 </html>
