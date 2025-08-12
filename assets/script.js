@@ -1,130 +1,58 @@
-// Global variables
-let eventsData = []
-let filteredData = []
+/* assets/script.js */
+"use strict";
 
-// Initialize the application
-document.addEventListener("DOMContentLoaded", () => {
-  setupEventListeners()
-  fetchEventsData()
-})
+/** Config */
+const EVENTS_JSON_URL = "./data/events.json";
 
-// Setup event listeners
-function setupEventListeners() {
-  // Background upload functionality
-  const backgroundUpload = document.getElementById("background-upload")
-  if (backgroundUpload) {
-    backgroundUpload.addEventListener("change", handleBackgroundUpload)
-  }
+/** State */
+let allData = [];
+let filtered = [];
 
-  // Filter inputs
-  const filterInputs = document.querySelectorAll(".filter-input")
-  filterInputs.forEach((input) => {
-    input.addEventListener("input", handleFilterChange)
-  })
+/** Elements */
+const els = {
+  tbody: document.getElementById("table-body"),
+  lastUpdated: document.getElementById("last-updated"),
+  count: document.getElementById("count-badge"),
+  fName: document.getElementById("filter-name"),
+  fStart: document.getElementById("filter-start"),
+  fEnd: document.getElementById("filter-end"),
+  fLoc: document.getElementById("filter-location"),
+  fUrl: document.getElementById("filter-url"),
+};
+
+/** Utils */
+function safe(val) {
+  return (val ?? "").toString().trim();
 }
 
-// Handle background image upload
-function handleBackgroundUpload(event) {
-  const file = event.target.files[0]
-  if (file && file.type.startsWith("image/")) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const backgroundImage = document.getElementById("background-image")
-      if (backgroundImage) {
-        backgroundImage.src = e.target.result
-      }
-    }
-    reader.readAsDataURL(file)
-  }
+function escapeHtml(str) {
+  return safe(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-// Fetch events data from JSON file
-async function fetchEventsData() {
+function isValidHttpUrl(maybeUrl) {
   try {
-    const response = await fetch("/data/events_upcoming.json")
-    if (response.ok) {
-      eventsData = await response.json()
-      filteredData = [...eventsData]
-      renderTable()
-    } else {
-      console.warn("Failed to fetch events data")
-      eventsData = []
-      filteredData = []
-      renderTable()
-    }
-  } catch (error) {
-    console.warn("Error fetching events data:", error)
-    eventsData = []
-    filteredData = []
-    renderTable()
+    const u = new URL(maybeUrl);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 
-// Handle filter changes
-function handleFilterChange() {
-  const filters = {
-    name: document.getElementById("filter-name").value.toLowerCase(),
-    start: document.getElementById("filter-start").value.toLowerCase(),
-    end: document.getElementById("filter-end").value.toLowerCase(),
-    location: document.getElementById("filter-location").value.toLowerCase(),
-    url: document.getElementById("filter-url").value.toLowerCase(),
-  }
+/** Rendering */
+function rowHtml(evt) {
+  const name = escapeHtml(evt.name);
+  const start = escapeHtml(evt.start_date);
+  const end = escapeHtml(evt.end_date);
+  const loc = escapeHtml(evt.location);
+  const urlRaw = safe(evt.url || evt.link);
+  const url = isValidHttpUrl(urlRaw) ? urlRaw : "";
+  const a = url ? `<a class="link" href="${escapeHtml(url)}" target="_blank" rel="noopener">Open</a>` : "";
 
-  filteredData = eventsData.filter((event) => {
-    return (
-      event.name.toLowerCase().includes(filters.name) &&
-      event.start_date.toLowerCase().includes(filters.start) &&
-      event.end_date.toLowerCase().includes(filters.end) &&
-      event.location.toLowerCase().includes(filters.location) &&
-      event.url.toLowerCase().includes(filters.url)
-    )
-  })
-
-  renderTable()
-}
-
-// Render the events table
-function renderTable() {
-  const tbody = document.getElementById("events-tbody")
-  if (!tbody) return
-
-  tbody.innerHTML = ""
-
-  filteredData.forEach((event) => {
-    const row = document.createElement("tr")
-
-    // Event name
-    const nameCell = document.createElement("td")
-    nameCell.textContent = event.name || ""
-    row.appendChild(nameCell)
-
-    // Start date
-    const startCell = document.createElement("td")
-    startCell.textContent = event.start_date || ""
-    row.appendChild(startCell)
-
-    // End date
-    const endCell = document.createElement("td")
-    endCell.textContent = event.end_date || ""
-    row.appendChild(endCell)
-
-    // Location
-    const locationCell = document.createElement("td")
-    locationCell.textContent = event.location || ""
-    row.appendChild(locationCell)
-
-    // URL
-    const urlCell = document.createElement("td")
-    if (event.url && event.url.trim()) {
-      const link = document.createElement("a")
-      link.href = event.url
-      link.target = "_blank"
-      link.rel = "noopener"
-      link.textContent = "Visit"
-      urlCell.appendChild(link)
-    }
-    row.appendChild(urlCell)
-
-    tbody.appendChild(row)
-  })
-}
+  return `
+    <tr>
+      <td>${name}</td>
