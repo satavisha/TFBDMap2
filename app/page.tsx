@@ -28,7 +28,8 @@ export default function TFBDMap() {
 
   useEffect(() => {
     // Load events data
-    fetch("/events.json")
+    /* fetch("/events.json") */
+    fetch("/data/events_upcoming.json")
       .then((res) => res.json())
       .then((data) => {
         setEvents(data)
