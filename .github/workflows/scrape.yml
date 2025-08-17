@@ -2,8 +2,16 @@ name: Daily Scrape
 
 on:
   schedule:
-    - cron: "30 3 * * *"   # 9:00 AM IST daily (IST = UTC+5:30)
-  workflow_dispatch:        # lets you run it manually from the Actions tab
+    - cron: "30 3 * * *"   # 9:00 AM IST daily
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/scrape.yml"
+      - "scraper.py"
+      - "requirements.txt"
+      - "data/**"
+      - "websites_list.*"      # lets you run it manually from the Actions tab
 
 permissions:
   contents: write           # allow pushing updated JSON files
