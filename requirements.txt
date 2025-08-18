@@ -1,5 +1,4 @@
-beautifulsoup4==4.12.3
-python-dateutil==2.9.0.post0
-playwright==1.43.0
-openai==1.40.0
-httpx==0.27.2
+scrapegraphai>=1.0.0
+python-dateutil>=2.9.0
+playwright>=1.43.0
+openai>=1.99.9
