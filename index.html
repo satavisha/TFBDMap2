@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="./assets/styles.css" />
 
   <style>
-    /* Minimal in-page styles so the page looks fine even if external CSS is not loaded */
+    /* Keep the exact theme you built */
     :root {
       --bg: #0f0f14;
       --panel: rgba(255,255,255,0.06);
@@ -80,6 +80,7 @@
       backdrop-filter: blur(6px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.25);
       overflow: hidden;
+      margin-bottom: 28px;
     }
     .panel-header {
       display: flex;
@@ -139,9 +140,7 @@
       border-bottom: 1px solid rgba(255,255,255,0.06);
       vertical-align: top;
     }
-    tbody tr:hover {
-      background: rgba(255,255,255,0.04);
-    }
+    tbody tr:hover { background: rgba(255,255,255,0.04); }
     a.link {
       color: var(--accent-2);
       text-decoration: none;
@@ -174,14 +173,14 @@
   </header>
 
   <main class="container">
-    <section class="panel" aria-labelledby="events-heading">
+    <!-- Upcoming -->
+    <section class="panel" aria-labelledby="upcoming-heading">
       <div class="panel-header">
-        <h2 id="events-heading">Upcoming Events <span class="badge" id="count-badge">0</span></h2>
+        <h2 id="upcoming-heading">Upcoming Events <span class="badge" id="upcoming-count">0</span></h2>
         <div class="meta" id="last-updated" aria-live="polite">Loading latest data</div>
       </div>
-
       <div class="table-wrap">
-        <table id="events-table">
+        <table id="upcoming-table">
           <thead>
             <tr>
               <th style="width: 32%">Event name</th>
@@ -191,16 +190,43 @@
               <th style="width: 20%">URL</th>
             </tr>
             <tr class="filters">
-              <th><input id="filter-name" type="text" placeholder="Filter by name"></th>
-              <th><input id="filter-start" type="text" placeholder="dd/mm/yyyy"></th>
-              <th><input id="filter-end" type="text" placeholder="dd/mm/yyyy"></th>
-              <th><input id="filter-location" type="text" placeholder="State, Country"></th>
-              <th><input id="filter-url" type="text" placeholder="Filter by domain"></th>
+              <th><input id="u-filter-name" type="text" placeholder="Filter by name"></th>
+              <th><input id="u-filter-start" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="u-filter-end" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="u-filter-location" type="text" placeholder="State, Country"></th>
+              <th><input id="u-filter-url" type="text" placeholder="Filter by domain"></th>
             </tr>
           </thead>
-          <tbody id="table-body">
-            <!-- rows injected by JS -->
-          </tbody>
+          <tbody id="upcoming-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Past -->
+    <section class="panel" aria-labelledby="past-heading">
+      <div class="panel-header">
+        <h2 id="past-heading">Past Events <span class="badge" id="past-count">0</span></h2>
+        <div class="meta" id="past-meta">Archive of previous events</div>
+      </div>
+      <div class="table-wrap">
+        <table id="past-table">
+          <thead>
+            <tr>
+              <th style="width: 32%">Event name</th>
+              <th style="width: 12%">Start date</th>
+              <th style="width: 12%">End date</th>
+              <th style="width: 24%">Location</th>
+              <th style="width: 20%">URL</th>
+            </tr>
+            <tr class="filters">
+              <th><input id="p-filter-name" type="text" placeholder="Filter by name"></th>
+              <th><input id="p-filter-start" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="p-filter-end" type="text" placeholder="dd/mm/yyyy"></th>
+              <th><input id="p-filter-location" type="text" placeholder="State, Country"></th>
+              <th><input id="p-filter-url" type="text" placeholder="Filter by domain"></th>
+            </tr>
+          </thead>
+          <tbody id="past-body"></tbody>
         </table>
       </div>
     </section>
@@ -212,107 +238,146 @@
   <script src="./assets/script.js" defer></script>
 
   <script>
-    // If you keep logic in assets/script.js, this inline code is optional.
-    // Below is a self-contained fallback so index.html works even if script.js is empty.
+    /* ===========
+       DATA CONFIG
+       =========== */
+    // Default: load from your repo (works on both GitHub Pages and Vercel if file exists at /data/events.json)
+    const USE_CDN = false; // set to true to use raw.githack CDN
+    const LOCAL_JSON_URL = "./data/events.json";
+    const CDN_JSON_URL = "https://raw.githack.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME/main/data/events.json"; // <-- replace if USE_CDN = true
 
-    const EVENTS_JSON_URL = "./data/events.json"; // local file for GitHub Pages or Vercel
-    let allData = [];
-    let filtered = [];
+    const EVENTS_JSON_URL = USE_CDN ? CDN_JSON_URL : LOCAL_JSON_URL;
 
+    /* ===========
+       DOM HOOKS
+       =========== */
     const els = {
-      tbody: document.getElementById("table-body"),
+      // meta
       lastUpdated: document.getElementById("last-updated"),
-      count: document.getElementById("count-badge"),
-      fName: document.getElementById("filter-name"),
-      fStart: document.getElementById("filter-start"),
-      fEnd: document.getElementById("filter-end"),
-      fLoc: document.getElementById("filter-location"),
-      fUrl: document.getElementById("filter-url"),
+      // upcoming table
+      uBody: document.getElementById("upcoming-body"),
+      uCount: document.getElementById("upcoming-count"),
+      uName: document.getElementById("u-filter-name"),
+      uStart: document.getElementById("u-filter-start"),
+      uEnd: document.getElementById("u-filter-end"),
+      uLoc: document.getElementById("u-filter-location"),
+      uUrl: document.getElementById("u-filter-url"),
+      // past table
+      pBody: document.getElementById("past-body"),
+      pCount: document.getElementById("past-count"),
+      pName: document.getElementById("p-filter-name"),
+      pStart: document.getElementById("p-filter-start"),
+      pEnd: document.getElementById("p-filter-end"),
+      pLoc: document.getElementById("p-filter-location"),
+      pUrl: document.getElementById("p-filter-url"),
     };
 
-    function safe(val) {
-      return (val ?? "").toString().trim();
-    }
+    /* ===========
+       HELPERS
+       =========== */
+    const safe = (val) => (val ?? "").toString().trim();
 
-    function toCells(evt) {
-      const name = safe(evt.name);
-      const start = safe(evt.start_date);
-      const end = safe(evt.end_date);
-      const loc = safe(evt.location);
-      const url = safe(evt.url) || safe(evt.link);
-
-      const a = url ? `<a class="link" href="${url}" target="_blank" rel="noopener">Open</a>` : "";
-
+    function toRowHTML(evt) {
+      const name = safe(evt.name || evt.event_name || evt.title);
+      const start = safe(evt.start_date || evt.start);
+      const end = safe(evt.end_date || evt.end);
+      const loc = safe(evt.location || evt.city || evt.place);
+      const url = safe(evt.url || evt.link || evt.source);
+      const linkHTML = url ? `<a class="link" href="${url}" target="_blank" rel="noopener">Open</a>` : "";
       return `
         <td>${name}</td>
         <td>${start}</td>
         <td>${end}</td>
         <td>${loc}</td>
-        <td>${a}</td>
+        <td>${linkHTML}</td>
       `;
     }
 
-    function render(rows) {
-      els.tbody.innerHTML = rows.map(r => `<tr>${toCells(r)}</tr>`).join("");
-      els.count.textContent = rows.length;
+    function renderTable(items, tbodyEl, countEl) {
+      tbodyEl.innerHTML = items.map(r => `<tr>${toRowHTML(r)}</tr>`).join("");
+      countEl.textContent = items.length;
     }
 
-    function applyFilters() {
-      const qName = els.fName.value.toLowerCase();
-      const qStart = els.fStart.value.toLowerCase();
-      const qEnd = els.fEnd.value.toLowerCase();
-      const qLoc = els.fLoc.value.toLowerCase();
-      const qUrl = els.fUrl.value.toLowerCase();
-
-      filtered = allData.filter(evt => {
-        const name = safe(evt.name).toLowerCase();
-        const start = safe(evt.start_date).toLowerCase();
-        const end = safe(evt.end_date).toLowerCase();
-        const loc = safe(evt.location).toLowerCase();
-        const url = safe(evt.url || evt.link).toLowerCase();
+    function makeFilterFn(inputs) {
+      // inputs: { name, start, end, loc, url }
+      return (evt) => {
+        const name = safe(evt.name || evt.event_name || evt.title).toLowerCase();
+        const start = safe(evt.start_date || evt.start).toLowerCase();
+        const end = safe(evt.end_date || evt.end).toLowerCase();
+        const loc = safe(evt.location || evt.city || evt.place).toLowerCase();
+        const url = safe(evt.url || evt.link || evt.source).toLowerCase();
 
         return (
-          name.includes(qName) &&
-          start.includes(qStart) &&
-          end.includes(qEnd) &&
-          loc.includes(qLoc) &&
-          url.includes(qUrl)
+          name.includes(inputs.name.value.toLowerCase()) &&
+          start.includes(inputs.start.value.toLowerCase()) &&
+          end.includes(inputs.end.value.toLowerCase()) &&
+          loc.includes(inputs.loc.value.toLowerCase()) &&
+          url.includes(inputs.url.value.toLowerCase())
         );
-      });
-
-      render(filtered);
+      };
     }
 
-    function wireFilters() {
-      [els.fName, els.fStart, els.fEnd, els.fLoc, els.fUrl].forEach(input => {
-        input.addEventListener("input", applyFilters);
-      });
+    function wireFilters(sourceArray, inputs, tbodyEl, countEl) {
+      const apply = () => {
+        const pass = makeFilterFn(inputs);
+        const filtered = sourceArray.filter(pass);
+        renderTable(filtered, tbodyEl, countEl);
+      };
+      Object.values(inputs).forEach(inp => inp.addEventListener("input", apply));
+      // Initial filter (no input)
+      apply();
     }
+
+    /* ===========
+       LOAD + INIT
+       =========== */
+    let UPCOMING = [];
+    let PAST = [];
 
     async function loadData() {
       try {
-        const res = await fetch(EVENTS_JSON_URL, { cache: "no-cache" });
+        const res = await fetch(EVENTS_JSON_URL, { cache: "no-store" });
         if (!res.ok) throw new Error(`Failed to fetch events.json: ${res.status}`);
         const data = await res.json();
 
-        // Accept either a flat array or an object with { upcoming, past, last_updated }
-        const flat = Array.isArray(data) ? data : Array.isArray(data.upcoming) ? data.upcoming : [];
-        allData = flat;
-        filtered = [...allData];
+        // Accept either:
+        // 1) { upcoming: [], past: [], last_updated: "..." }
+        // 2) [ ... ]  (flat array treated as upcoming)
+        if (Array.isArray(data)) {
+          UPCOMING = data;
+          PAST = [];
+        } else {
+          UPCOMING = Array.isArray(data.upcoming) ? data.upcoming : (Array.isArray(data.events_upcoming) ? data.events_upcoming : []);
+          PAST = Array.isArray(data.past) ? data.past : (Array.isArray(data.events_past) ? data.events_past : []);
+          els.lastUpdated.textContent = `Last updated: ${safe(data.last_updated) || new Date().toLocaleString()}`;
+        }
 
-        const last = data.last_updated || new Date().toLocaleString();
-        els.lastUpdated.textContent = `Last updated: ${last}`;
-        render(filtered);
+        // Render initial tables
+        renderTable(UPCOMING, els.uBody, els.uCount);
+        renderTable(PAST, els.pBody, els.pCount);
+
+        // Wire filters
+        wireFilters(
+          UPCOMING,
+          { name: els.uName, start: els.uStart, end: els.uEnd, loc: els.uLoc, url: els.uUrl },
+          els.uBody,
+          els.uCount
+        );
+        wireFilters(
+          PAST,
+          { name: els.pName, start: els.pStart, end: els.pEnd, loc: els.pLoc, url: els.pUrl },
+          els.pBody,
+          els.pCount
+        );
       } catch (err) {
         console.warn(err);
         els.lastUpdated.textContent = "Could not load data";
-        allData = [];
-        filtered = [];
-        render(filtered);
+        // Clear tables on error
+        renderTable([], els.uBody, els.uCount);
+        renderTable([], els.pBody, els.pCount);
       }
     }
 
-    wireFilters();
     loadData();
   </script>
 </body>
