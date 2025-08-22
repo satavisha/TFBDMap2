@@ -1,110 +1,273 @@
-import os
-import json
-from datetime import datetime
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os, re, json, argparse
+from pathlib import Path
+from datetime import datetime, timezone
 from dateutil import parser as dateparser
-from scrapegraphai.graphs import SmartScraperGraph
 
-# Read OpenAI API key from environment
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# --- Firecrawl setup ---------------------------------------------------------
+# Requires: pip install firecrawl-python
+# Add FIRECRAWL_API_KEY as a GitHub secret for the workflow and as an env var locally.
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
+if not FIRECRAWL_API_KEY:
+    # Allow running read-only for unit tests with a warning
+    print("⚠️  FIRECRAWL_API_KEY not set. If scraping fails, set this env var.")
+try:
+    from firecrawl import FirecrawlApp
+    app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)  # type: ignore
+except Exception as e:
+    print(f"⚠️  Firecrawl import/init warning: {e}")
+    app = None  # We'll still try to run, but scraping will fail without app
 
-# File containing the list of websites to scrape
-WEBSITE_LIST_FILE = "websites_list.txt"
 
-# Output JSON files
-UPCOMING_FILE = "data/events.json"
-PAST_FILE = "data/events_past.json"
+# --- Config / paths ----------------------------------------------------------
+REPO_ROOT = Path(__file__).resolve().parent
+WEBSITE_LIST_FILE = REPO_ROOT / "websites_list.txt"
 
-# Prompt for ScrapeGraphAI
-SCRAPE_PROMPT = """
-List all events on this page with the following fields:
-- name (Event name)
-- start_date (in dd/mm/yyyy format)
-- end_date (in dd/mm/yyyy format, if available)
-- location (City, State, Country if possible)
-- link (URL to the event)
-"""
+OUT_DATA = REPO_ROOT / "data"
+OUT_DOCS = REPO_ROOT / "docs" / "data"
+OUT_PUBLIC = REPO_ROOT / "public" / "data"
 
-def normalize_date(date_str):
-    """Try to parse any date string and return dd/mm/yyyy format."""
-    if not date_str or date_str.strip() == "":
-        return ""
-    try:
-        dt = dateparser.parse(date_str, dayfirst=True)
-        return dt.strftime("%d/%m/%Y")
-    except Exception:
-        return date_str  # fallback: keep as-is if unparseable
+OUT_DATA.mkdir(parents=True, exist_ok=True)
+OUT_DOCS.mkdir(parents=True, exist_ok=True)
+OUT_PUBLIC.mkdir(parents=True, exist_ok=True)
 
-def scrape_site(url):
-    """Scrape events from a single website using ScrapeGraphAI."""
-    graph_config = {
-        "llm": {
-            "api_key": OPENAI_API_KEY,
-            "model": "gpt-3.5-turbo"
-        }
+# Primary outputs
+DATA_UPCOMING = OUT_DATA / "events.json"           # { "upcoming": [...] }
+DATA_PAST     = OUT_DATA / "events_past.json"      # { "past": [...] }
+
+# Mirrors for the two frontends
+DOCS_UPCOMING = OUT_DOCS / "events.json"           # { "upcoming": [...] }  (docs site fetches this)
+DOCS_PAST     = OUT_DOCS / "events_past.json"      # { "past": [...] }
+
+PUBLIC_UPCOMING_LIST = OUT_PUBLIC / "events_upcoming.json"  # [...] (Next.js fetches this)
+PUBLIC_UPCOMING_OBJ  = OUT_PUBLIC / "events.json"            # { "upcoming": [...] }
+PUBLIC_PAST_OBJ      = OUT_PUBLIC / "events_past.json"       # { "past": [...] }
+
+# --- Your proven parsing logic (from notebook), tidy-wrapped -----------------
+MONTHS = r"(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+RANGE_SEP = re.compile(r"\s*(?:to|through|until|[-–—~])\s*", re.IGNORECASE)
+VENUE_WORDS = re.compile(r"\b(Center|Hall|Auditorium|Masonic|Theatre|Theater|Convention|Expo|Arena|Ballroom|Community|University|Hotel)\b", re.I)
+
+def clean(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip() if s else ""
+
+def lines_list(markdown: str):
+    return [clean(x) for x in markdown.splitlines() if clean(x)]
+
+def parse_date(txt: str):
+    if not txt: 
+        return None
+    for dayfirst in (False, True):
+        try:
+            return dateparser.parse(txt, dayfirst=dayfirst, fuzzy=True)
+        except Exception:
+            pass
+    return None
+
+def ddmmyyyy(dt): 
+    return dt.strftime("%d/%m/%Y") if dt else ""
+
+def find_title(lines):
+    for ln in lines:
+        if ln.startswith("# "): 
+            return clean(ln.lstrip("# ").strip())
+    for ln in lines:
+        if re.search(r"(Tamarind Union|festival|conference|summit|workshop|expo|event)", ln, re.I):
+            return ln
+    return "Event"
+
+def find_date_line(lines):
+    cands = []
+    for i, ln in enumerate(lines):
+        if re.search(MONTHS + r"\s+\d{1,2}.*\b\d{4}\b", ln, re.I) and not re.search(r"\b(am|pm)\b", ln, re.I):
+            cands.append((i, ln))
+    for i, ln in cands:
+        if RANGE_SEP.search(ln):
+            return i, ln
+    return cands[0] if cands else (None, "")
+
+def split_dates(date_line: str):
+    if not date_line: 
+        return None, None
+    if RANGE_SEP.search(date_line):
+        a, b = RANGE_SEP.split(date_line, maxsplit=1)
+        return parse_date(a), parse_date(b)
+    d = parse_date(date_line)
+    return d, d
+
+def find_location(lines, date_idx):
+    if date_idx is None:
+        window = lines[:30]
+    else:
+        start = max(0, date_idx - 8); end = min(len(lines), date_idx + 8)
+        window = lines[start:end]
+
+    venue = address = city_state = ""
+    for ln in window:
+        if not venue and VENUE_WORDS.search(ln): 
+            venue = ln
+        if not address and re.search(r"\b\d{3,6}\s+\w+", ln): 
+            address = ln      # e.g., 4550 N Pilgrim Rd
+        if not city_state and re.search(r",[ ]*[A-Z]{2}(\b|$)", ln): 
+            city_state = ln  # ", WI"
+
+    if not city_state:
+        for ln in window:
+            if re.search(r"\bBrookfield\b", ln, re.I):
+                city_state = ln; break
+
+    parts = [p for p in [venue, city_state, address] if p]
+    # Unique, order-preserving
+    seen, out = set(), []
+    for p in parts:
+        if p not in seen:
+            seen.add(p); out.append(p)
+    return ", ".join(out)
+
+def extract_event_from_markdown(md: str, page_url: str):
+    if not md:
+        return {"name": "Event", "start_date": "", "end_date": "", "location": "", "link": page_url}
+
+    ls = lines_list(md)
+    name = find_title(ls)
+    date_idx, date_ln = find_date_line(ls)
+    d_start, d_end = split_dates(date_ln)
+    start_str = ddmmyyyy(d_start) if d_start else ""
+    end_str = ddmmyyyy(d_end) if d_end else start_str
+    location = find_location(ls, date_idx)
+
+    return {
+        "name": name,
+        "start_date": start_str,
+        "end_date": end_str,
+        "location": location,
+        "link": page_url
     }
 
-    smart_scraper = SmartScraperGraph(
-        prompt=SCRAPE_PROMPT,
-        source=url,
-        config=graph_config
+# --- Scrape helpers ----------------------------------------------------------
+def firecrawl_markdown_and_html(url: str):
+    """Fetch both markdown and html via Firecrawl."""
+    if app is None:
+        raise RuntimeError("Firecrawl app not initialized (missing FIRECRAWL_API_KEY or import failed).")
+    doc = app.scrape(
+        url,
+        formats=["markdown","html"],
+        only_main_content=False,
+        timeout=120000
     )
+    # Try multiple attribute styles (SDK differences)
+    md = getattr(doc, "markdown", None)
+    html = getattr(doc, "html", None)
+    if hasattr(doc, "model_dump"):
+        res = doc.model_dump()
+    elif hasattr(doc, "dict"):
+        res = doc.dict()
+    else:
+        res = getattr(doc, "__dict__", {}) or {}
 
+    if not md and isinstance(res, dict):
+        md = res.get("markdown")
+    if not html and isinstance(res, dict):
+        html = res.get("html")
+    return md or "", html or ""
+
+def scrape_one_url(url: str) -> dict:
+    """Return a single normalized event dict for a page."""
+    md, _html = firecrawl_markdown_and_html(url)
+    evt = extract_event_from_markdown(md, url)
+    # Normalize key naming for both frontends (they accept link or url)
+    if "url" not in evt:
+        evt["url"] = evt.get("link", url)
+    return evt
+
+def parse_ddmmyyyy(s: str):
     try:
-        result = smart_scraper.run()
-        events = result.get("events", result)  # handle variations
-        cleaned = []
-        for ev in events:
-            start = normalize_date(ev.get("start_date", ""))
-            end = normalize_date(ev.get("end_date", ""))
-            cleaned.append({
-                "name": ev.get("name", "").strip(),
-                "start_date": start,
-                "end_date": end,
-                "location": ev.get("location", "").strip(),
-                "link": ev.get("link", url)  # fallback to page url
-            })
-        return cleaned
-    except Exception as e:
-        print(f"[WARN] Failed {url}: {e}")
-        return []
+        return datetime.strptime(s, "%d/%m/%Y").date()
+    except Exception:
+        return None
 
+def partition_events(events: list):
+    """Split into upcoming vs past using start_date (inclusive today as upcoming)."""
+    today = datetime.now(timezone.utc).astimezone().date()  # local date on runner
+    upcoming, past = [], []
+    for e in events:
+        d = parse_ddmmyyyy(e.get("start_date",""))
+        if d is None:
+            # If no date, default to upcoming to surface it (adjust if you prefer)
+            upcoming.append(e)
+        elif d >= today:
+            upcoming.append(e)
+        else:
+            past.append(e)
+    return upcoming, past
+
+def write_json(path: Path, obj):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=2, ensure_ascii=False)
+
+# --- CLI ---------------------------------------------------------------------
 def main():
-    today = datetime.today().date()
-    upcoming = []
-    past = []
+    ap = argparse.ArgumentParser(description="Scrape TFBD event pages using Firecrawl and emit JSON.")
+    ap.add_argument("--test_url", help="Scrape a single URL and print the parsed event JSON.")
+    ap.add_argument("--dry_run", action="store_true", help="Run without writing output files.")
+    args = ap.parse_args()
 
-    # Load websites from file
-    with open(WEBSITE_LIST_FILE, "r") as f:
-        websites = [line.strip() for line in f if line.strip()]
+    if args.test_url:
+        print(f"Scraping (test): {args.test_url}")
+        evt = scrape_one_url(args.test_url)
+        print(json.dumps(evt, indent=2, ensure_ascii=False))
+        return
 
-    for site in websites:
-        print(f"Scraping: {site}")
-        events = scrape_site(site)
-        for ev in events:
-            try:
-                if ev["start_date"]:
-                    start_dt = datetime.strptime(ev["start_date"], "%d/%m/%Y").date()
-                    if start_dt >= today:
-                        upcoming.append(ev)
-                    else:
-                        past.append(ev)
-                else:
-                    upcoming.append(ev)
-            except Exception:
-                upcoming.append(ev)
+    # Read URL list
+    urls = []
+    if WEBSITE_LIST_FILE.exists():
+        with WEBSITE_LIST_FILE.open("r", encoding="utf-8") as f:
+            urls = [ln.strip() for ln in f if ln.strip() and not ln.strip().startswith("#")]
+    else:
+        print(f"⚠️  {WEBSITE_LIST_FILE} not found. Nothing to scrape.")
+        urls = []
 
-    # Ensure data folder exists
-    os.makedirs("data", exist_ok=True)
+    all_events = []
+    for u in urls:
+        try:
+            print(f"🔎 Scraping: {u}")
+            ev = scrape_one_url(u)
+            all_events.append(ev)
+            print(f"   → {ev.get('name','(no name)')} | {ev.get('start_date','')} – {ev.get('end_date','')}")
+        except Exception as e:
+            print(f"❌ Failed {u}: {e}")
 
-    # Write results
-    with open(UPCOMING_FILE, "w", encoding="utf-8") as f:
-        json.dump({"upcoming": upcoming}, f, indent=2, ensure_ascii=False)
+    upcoming, past = partition_events(all_events)
 
-    with open(PAST_FILE, "w", encoding="utf-8") as f:
-        json.dump({"past": past}, f, indent=2, ensure_ascii=False)
+    print(f"\nSummary: {len(upcoming)} upcoming, {len(past)} past, total {len(all_events)}")
 
-    print(f"✅ Wrote {UPCOMING_FILE} ({len(upcoming)} upcoming)")
-    print(f"✅ Wrote {PAST_FILE} ({len(past)} past)")
+    if args.dry_run:
+        print("🧪 --dry_run specified. Skipping writes.")
+        return
+
+    # Primary writes (CI commits these)
+    write_json(DATA_UPCOMING, {"upcoming": upcoming})
+    write_json(DATA_PAST, {"past": past})
+
+    # Mirrors for your two frontends
+    write_json(DOCS_UPCOMING, {"upcoming": upcoming})
+    write_json(DOCS_PAST, {"past": past})
+
+    write_json(PUBLIC_UPCOMING_LIST, upcoming)          # array form
+    write_json(PUBLIC_UPCOMING_OBJ, {"upcoming": upcoming})
+    write_json(PUBLIC_PAST_OBJ, {"past": past})
+
+    print(f"✅ Wrote:")
+    print(f"   {DATA_UPCOMING}")
+    print(f"   {DATA_PAST}")
+    print(f"   {DOCS_UPCOMING}")
+    print(f"   {DOCS_PAST}")
+    print(f"   {PUBLIC_UPCOMING_LIST}")
+    print(f"   {PUBLIC_UPCOMING_OBJ}")
+    print(f"   {PUBLIC_PAST_OBJ}")
 
 if __name__ == "__main__":
     main()
